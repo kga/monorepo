@@ -204,16 +204,16 @@ class Hendl
   end
 end
 
-require './tools'
-destination = "fastlane/fastlane" # TODO: Should be fastlane
-names = Array(ENV["TOOL"] || @tools.delete_if { |a| a == "fastlane" }) # we don't want to import issues from our own repo
+# foo/bar, baz/qux, 'blah blah blah'
+source, destination, reason = *ARGV
+
 open_only = !ENV["ALL"]
 
-puts "Migrating #{names.join(', ')}"
+puts "Migrating #{source} -> #{destination}"
 
-names.each do |current|
-  Hendl.new(source: "fastlane/#{current}",
-       destination: destination,
-            reason: "`fastlane` is now a mono repo, you can read more about the change in our [blog post](https://krausefx.com/blog/our-goal-to-unify-fastlane-tools). All tools are now available in the [fastlane main repo](https://github.com/fastlane/fastlane) :rocket:",
-         open_only: open_only)
-end
+Hendl.new(
+  source: source,
+  destination: destination,
+  reason: resoan,
+  open_only: open_only,
+)
