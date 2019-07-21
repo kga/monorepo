@@ -23,15 +23,19 @@ class Hendl
     self.start
   end
 
-  def client
-    @client ||= Octokit::Client.new(access_token: ENV["GITHUB_API_TOKEN"])
+  def source_client
+    @source_client ||= Octokit::Client.new(access_token: ENV["SOURCE_GITHUB_API_TOKEN"])
+  end
+
+  def destination_client
+    @destination_client ||= Octokit::Client.new(access_token: ENV["DESTINATION_GITHUB_API_TOKEN"])
   end
 
   def start
-    client.auto_paginate = true
+    source_client.auto_paginate = true
     puts "Fetching issues from '#{source}'..."
     counter = 0
-    client.issues(source, per_page: 1000, state: "all").each do |original|
+    source_client.issues(source, per_page: 1000, state: "all").each do |original|
       if self.open_only and original.state != "open"
         puts "Skipping #{original.number} as it's not an open one"
         next
@@ -85,7 +89,7 @@ class Hendl
   # We copy over all the issues, and also mention everyone
   # so that people are automatically subscribed to notifications
   def hendl_issue(original)
-    original_comments = client.issue_comments(source, original.number)
+    original_comments = source_client.issue_comments(source, original.number)
     comments = []
     original_comments.each do |original_comment|
       table_code = table(original_comment.user.id, "@#{original_comment.user.login} commented")
@@ -98,7 +102,6 @@ class Hendl
 
     actual_label = original.labels.collect { |a| a[:name] }
 
-    tool_name_label = source.split("/").last
     table_link = "Imported from <a href='#{original.html_url}'>#{source}##{original.number}</a>"
     table_code = table(original.user.id, "Original issue by @#{original.user.login} - #{table_link}")
     body = [table_code, original.body]
@@ -107,14 +110,14 @@ class Hendl
         title: original.title,
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
-        labels: actual_label + [tool_name_label],
+        labels: actual_label,
         closed: original.state != "open"
       },
       comments: comments
     }
     data[:issue][:closed_at] = original.closed_at.iso8601 if original.state != "open"
 
-    response = Excon.post("https://api.github.com/repos/#{destination}/import/issues", body: data.to_json, headers: request_headers)
+    response = Excon.post("https://api.github.com/repos/#{destination}/import/issues", body: data.to_json, headers: destination_request_headers)
     response = JSON.parse(response.body)
     status_url = response['url']
     puts response
@@ -126,7 +129,7 @@ class Hendl
         sleep(request_num)
 
         puts "Sending #{status_url}"
-        async_response = Excon.get(status_url, headers: request_headers) # if this crashes, make sure to have a valid token with admin permission to the actual repo
+        async_response = Excon.get(status_url, headers: destination_request_headers) # if this crashes, make sure to have a valid token with admin permission to the actual repo
         async_response = JSON.parse(async_response.body)
         puts async_response.to_s.yellow
 
@@ -145,7 +148,7 @@ class Hendl
     if new_issue_url.to_s.length > 0
       new_issue_url.gsub!("api.github.com/repos", "github.com")
 
-      client.update_issue(source, original.number, labels: (actual_label + ["migrated"]))
+      source_client.update_issue(source, original.number, labels: (actual_label + ["migrated"]))
 
       # reason, link to the new issue
       puts "closing old issue #{original.number}"
@@ -153,22 +156,30 @@ class Hendl
       body << "This issue was migrated to #{new_issue_url}. Please post all further comments there."
       body << reason
       puts new_issue_url
-      client.add_comment(source, original.number, body.join("\n\n"))
+      source_client.add_comment(source, original.number, body.join("\n\n"))
       smart_sleep
-      client.close_issue(source, original.number) unless original.state == "closed"
+      source_client.close_issue(source, original.number) unless original.state == "closed"
     else
       puts "unable to find new issue url, not closing or commenting".red
-      client.update_issue(source, original.number, labels: (actual_label + ["migration_failed"]))
+      source_client.update_issue(source, original.number, labels: (actual_label + ["migration_failed"]))
       puts "Status URL: #{status_url}"
       # This means we have to manually migrate the issue
       # if you want to try it again, just remove the migration_failed tag
     end
   end
 
-  def request_headers
+  def source_request_headers
+    request_headers(ENV["SOURCE_GITHUB_API_TOKEN"])
+  end
+
+  def destination_request_headers
+    request_headers(ENV["DESTINATION_GITHUB_API_TOKEN"])
+  end
+
+  def request_headers(token)
     {
       "Accept" => "application/vnd.github.golden-comet-preview+json",
-      "Authorization" => ("token " + ENV["GITHUB_API_TOKEN"]),
+      "Authorization" => ("token " + token),
       "Content-Type" => "application/x-www-form-urlencoded",
       "User-Agent" => "fastlane bot"
     }
@@ -187,9 +198,9 @@ class Hendl
     body << reason
     body << "Sorry for the troubles, we'd appreciate if you could re-submit your Pull Request with these changes to the new repository"
 
-    client.add_comment(source, original.number, body.join("\n\n"))
+    source_client.add_comment(source, original.number, body.join("\n\n"))
     smart_sleep
-    client.close_pull_request(source, original.number)
+    source_client.close_pull_request(source, original.number)
   end
 end
 
