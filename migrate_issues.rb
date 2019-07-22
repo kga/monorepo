@@ -15,26 +15,33 @@ class Hendl
   # Reason on why this was necessary
   attr_accessor :reason
 
+  # {
+  #   source_login_id: destination_login_id,
+  #   ...
+  # }
+  attr_accessor :user_mapping
+
   def initialize(source: nil, destination: nil, reason: nil, open_only: false)
     self.source = source
     self.destination = destination
     self.reason = reason
     self.open_only = open_only
+    self.user_mapping = JSON.parse(File.read(ENV["USER_MAPPING_JSON"])) rescue {}
     self.start
   end
 
-  def source_client
-    @source_client ||= Octokit::Client.new(
+  def client
+    @client ||= Octokit::Client.new(
       access_token: ENV["SOURCE_GITHUB_API_TOKEN"],
       api_endpoint: ENV.fetch("SOURCE_GITHUB_API_ENDPOINT", Octokit.api_endpoint),
     )
   end
 
   def start
-    source_client.auto_paginate = true
+    client.auto_paginate = true
     puts "Fetching issues from '#{source}'..."
     counter = 0
-    source_client.issues(source, per_page: 1000, state: "all").each do |original|
+    client.issues(source, per_page: 1000, state: "all").each do |original|
       if self.open_only and original.state != "open"
         puts "Skipping #{original.number} as it's not an open one"
         next
@@ -88,11 +95,11 @@ class Hendl
   # We copy over all the issues, and also mention everyone
   # so that people are automatically subscribed to notifications
   def hendl_issue(original)
-    original_comments = source_client.issue_comments(source, original.number)
+    original_comments = client.issue_comments(source, original.number)
     comments = []
     original_comments.each do |original_comment|
-      # TODO: id mapping?
-      table_code = table(original_comment.user.login, "@#{original_comment.user.login} commented")
+      mapped_login_id = map_login_id(original_comment.user.login)
+      table_code = table(mapped_login_id, "@#{mapped_login_id} commented")
       body = [table_code, original_comment.body]
       comments << {
         created_at: original_comment.created_at.iso8601,
@@ -102,15 +109,17 @@ class Hendl
 
     actual_label = original.labels.collect { |a| a[:name] }
 
+    mapped_login_id = map_login_id(original.user.login)
+
     table_link = "Imported from <a href='#{original.html_url}'>#{source}##{original.number}</a>"
-    table_code = table(original.user.login, "Original issue by @#{original.user.login} - #{table_link}")
+    table_code = table(mapped_login_id, "Original issue by @#{mapped_login_id} - #{table_link}")
     body = [table_code, original.body]
     data = {
       issue: {
         title: original.title,
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
-        assignee: original.assignee.nil? ? nil : original.assignee.login, # TODO: id mapping?
+        assignee: original.assignee.nil? ? nil : map_login_id(original.assignee.login),
         labels: actual_label,
         closed: original.state != "open"
       },
@@ -149,7 +158,7 @@ class Hendl
     if new_issue_url.to_s.length > 0
       new_issue_url.gsub!("api.github.com/repos", "github.com")
 
-      source_client.update_issue(source, original.number, labels: (actual_label + ["migrated"]))
+      client.update_issue(source, original.number, labels: (actual_label + ["migrated"]))
 
       # reason, link to the new issue
       puts "closing old issue #{original.number}"
@@ -157,12 +166,12 @@ class Hendl
       body << "This issue was migrated to #{new_issue_url}. Please post all further comments there."
       body << reason unless reason.nil?
       puts new_issue_url
-      source_client.add_comment(source, original.number, body.join("\n\n"))
+      client.add_comment(source, original.number, body.join("\n\n"))
       smart_sleep
-      source_client.close_issue(source, original.number) unless original.state == "closed"
+      client.close_issue(source, original.number) unless original.state == "closed"
     else
       puts "unable to find new issue url, not closing or commenting".red
-      source_client.update_issue(source, original.number, labels: (actual_label + ["migration_failed"]))
+      client.update_issue(source, original.number, labels: (actual_label + ["migration_failed"]))
       puts "Status URL: #{status_url}"
       # This means we have to manually migrate the issue
       # if you want to try it again, just remove the migration_failed tag
@@ -199,9 +208,13 @@ class Hendl
     body << reason
     body << "Sorry for the troubles, we'd appreciate if you could re-submit your Pull Request with these changes to the new repository"
 
-    source_client.add_comment(source, original.number, body.join("\n\n"))
+    client.add_comment(source, original.number, body.join("\n\n"))
     smart_sleep
-    source_client.close_pull_request(source, original.number)
+    client.close_pull_request(source, original.number)
+  end
+
+  def map_login_id(source_login_id)
+    user_mapping.fetch(source_login_id, source_login_id)
   end
 end
 
