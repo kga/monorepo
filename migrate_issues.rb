@@ -155,7 +155,7 @@ class Hendl
       puts "closing old issue #{original.number}"
       body = []
       body << "This issue was migrated to #{new_issue_url}. Please post all further comments there."
-      body << reason
+      body << reason unless reason.nil?
       puts new_issue_url
       source_client.add_comment(source, original.number, body.join("\n\n"))
       smart_sleep
@@ -208,7 +208,7 @@ end
 # foo/bar, baz/qux, 'blah blah blah'
 source, destination, reason = *ARGV
 
-open_only = !ENV["ALL"]
+open_only = !!ENV["OPE_ONLY"].to_i
 
 puts "Migrating #{source} -> #{destination}"
 
