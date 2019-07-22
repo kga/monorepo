@@ -120,7 +120,7 @@ class Hendl
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
         assignee: original.assignee.nil? ? nil : map_login_id(original.assignee.login),
-        labels: actual_label,
+        labels: actual_label + ["imported"],
         closed: original.state != "open"
       },
       comments: comments
