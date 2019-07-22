@@ -72,11 +72,11 @@ class Hendl
     sleep 2.5
   end
 
-  def table(user_id, body)
+  def table(login, body)
     "<table>
       <tr>
         <td>
-          <img src='https://avatars0.githubusercontent.com/u/#{user_id}?v=3&s=70' width='35'>
+          <img src='https://github.com/#{login}.png' width='35'>
         </td>
         <td>
           #{body}
@@ -92,7 +92,7 @@ class Hendl
     comments = []
     original_comments.each do |original_comment|
       # TODO: id mapping?
-      table_code = table(original_comment.user.id, "@#{original_comment.user.login} commented")
+      table_code = table(original_comment.user.login, "@#{original_comment.user.login} commented")
       body = [table_code, original_comment.body]
       comments << {
         created_at: original_comment.created_at.iso8601,
@@ -103,7 +103,7 @@ class Hendl
     actual_label = original.labels.collect { |a| a[:name] }
 
     table_link = "Imported from <a href='#{original.html_url}'>#{source}##{original.number}</a>"
-    table_code = table(original.user.id, "Original issue by @#{original.user.login} - #{table_link}")
+    table_code = table(original.user.login, "Original issue by @#{original.user.login} - #{table_link}")
     body = [table_code, original.body]
     data = {
       issue: {
