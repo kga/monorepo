@@ -24,11 +24,10 @@ class Hendl
   end
 
   def source_client
-    @source_client ||= Octokit::Client.new(access_token: ENV["SOURCE_GITHUB_API_TOKEN"])
-  end
-
-  def destination_client
-    @destination_client ||= Octokit::Client.new(access_token: ENV["DESTINATION_GITHUB_API_TOKEN"])
+    @source_client ||= Octokit::Client.new(
+      access_token: ENV["SOURCE_GITHUB_API_TOKEN"],
+      api_endpoint: ENV.fetch("SOURCE_GITHUB_API_ENDPOINT", Octokit.api_endpoint),
+    )
   end
 
   def start
