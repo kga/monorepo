@@ -215,6 +215,6 @@ puts "Migrating #{source} -> #{destination}"
 Hendl.new(
   source: source,
   destination: destination,
-  reason: resoan,
+  reason: reason,
   open_only: open_only,
 )
