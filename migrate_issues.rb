@@ -110,7 +110,7 @@ class Hendl
         title: original.title,
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
-        assignee: original.assignee.login, # TODO: id mapping?
+        assignee: original.assignee.nil? ? nil : original.assignee.login, # TODO: id mapping?
         labels: actual_label,
         closed: original.state != "open"
       },
