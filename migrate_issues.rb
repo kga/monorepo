@@ -109,6 +109,7 @@ class Hendl
         title: original.title,
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
+        assignee: original.assignee.login,
         labels: actual_label,
         closed: original.state != "open"
       },
