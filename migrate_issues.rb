@@ -213,7 +213,7 @@ end
 # foo/bar, baz/qux, 'blah blah blah'
 source, destination, reason = *ARGV
 
-open_only = !!ENV["OPE_ONLY"].to_i
+open_only = !!ENV["OPEN_ONLY"].to_i
 
 puts "Migrating #{source} -> #{destination}"
 
