@@ -91,6 +91,7 @@ class Hendl
     original_comments = source_client.issue_comments(source, original.number)
     comments = []
     original_comments.each do |original_comment|
+      # TODO: id mapping?
       table_code = table(original_comment.user.id, "@#{original_comment.user.login} commented")
       body = [table_code, original_comment.body]
       comments << {
@@ -109,7 +110,7 @@ class Hendl
         title: original.title,
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
-        assignee: original.assignee.login,
+        assignee: original.assignee.login, # TODO: id mapping?
         labels: actual_label,
         closed: original.state != "open"
       },
