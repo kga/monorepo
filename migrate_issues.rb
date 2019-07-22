@@ -127,7 +127,7 @@ class Hendl
     }
     data[:issue][:closed_at] = original.closed_at.iso8601 if original.state != "open"
 
-    response = Excon.post("https://api.github.com/repos/#{destination}/import/issues", body: data.to_json, headers: destination_request_headers)
+    response = Excon.post("https://api.github.com/repos/#{destination}/import/issues", body: data.to_json, headers: request_headers)
     response = JSON.parse(response.body)
     status_url = response['url']
     puts response
@@ -139,7 +139,7 @@ class Hendl
         sleep(request_num)
 
         puts "Sending #{status_url}"
-        async_response = Excon.get(status_url, headers: destination_request_headers) # if this crashes, make sure to have a valid token with admin permission to the actual repo
+        async_response = Excon.get(status_url, headers: request_headers) # if this crashes, make sure to have a valid token with admin permission to the actual repo
         async_response = JSON.parse(async_response.body)
         puts async_response.to_s.yellow
 
@@ -178,18 +178,10 @@ class Hendl
     end
   end
 
-  def source_request_headers
-    request_headers(ENV["SOURCE_GITHUB_API_TOKEN"])
-  end
-
-  def destination_request_headers
-    request_headers(ENV["DESTINATION_GITHUB_API_TOKEN"])
-  end
-
-  def request_headers(token)
+  def request_headers
     {
       "Accept" => "application/vnd.github.golden-comet-preview+json",
-      "Authorization" => ("token " + token),
+      "Authorization" => ("token " + ENV["DESTINATION_GITHUB_API_TOKEN"]),
       "Content-Type" => "application/x-www-form-urlencoded",
       "User-Agent" => "fastlane bot"
     }
