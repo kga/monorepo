@@ -15,16 +15,26 @@ class Hendl
   # Reason on why this was necessary
   attr_accessor :reason
 
+  # {
+  #   source_login_id: destination_login_id,
+  #   ...
+  # }
+  attr_accessor :user_mapping
+
   def initialize(source: nil, destination: nil, reason: nil, open_only: false)
     self.source = source
     self.destination = destination
     self.reason = reason
     self.open_only = open_only
+    self.user_mapping = JSON.parse(File.read(ENV["USER_MAPPING_JSON"])) rescue {}
     self.start
   end
 
   def client
-    @client ||= Octokit::Client.new(access_token: ENV["GITHUB_API_TOKEN"])
+    @client ||= Octokit::Client.new(
+      access_token: ENV["SOURCE_GITHUB_API_TOKEN"],
+      api_endpoint: ENV.fetch("SOURCE_GITHUB_API_ENDPOINT", Octokit.api_endpoint),
+    )
   end
 
   def start
@@ -69,11 +79,11 @@ class Hendl
     sleep 2.5
   end
 
-  def table(user_id, body)
+  def table(login, body)
     "<table>
       <tr>
         <td>
-          <img src='https://avatars0.githubusercontent.com/u/#{user_id}?v=3&s=70' width='35'>
+          <img src='https://github.com/#{login}.png' width='35'>
         </td>
         <td>
           #{body}
@@ -88,7 +98,8 @@ class Hendl
     original_comments = client.issue_comments(source, original.number)
     comments = []
     original_comments.each do |original_comment|
-      table_code = table(original_comment.user.id, "@#{original_comment.user.login} commented")
+      mapped_login_id = map_login_id(original_comment.user.login)
+      table_code = table(mapped_login_id, "@#{mapped_login_id} commented")
       body = [table_code, original_comment.body]
       comments << {
         created_at: original_comment.created_at.iso8601,
@@ -98,16 +109,18 @@ class Hendl
 
     actual_label = original.labels.collect { |a| a[:name] }
 
-    tool_name_label = source.split("/").last
+    mapped_login_id = map_login_id(original.user.login)
+
     table_link = "Imported from <a href='#{original.html_url}'>#{source}##{original.number}</a>"
-    table_code = table(original.user.id, "Original issue by @#{original.user.login} - #{table_link}")
+    table_code = table(mapped_login_id, "Original issue by @#{mapped_login_id} - #{table_link}")
     body = [table_code, original.body]
     data = {
       issue: {
         title: original.title,
         body: body.join("\n\n"),
         created_at: original.created_at.iso8601,
-        labels: actual_label + [tool_name_label],
+        assignee: original.assignee.nil? ? nil : map_login_id(original.assignee.login),
+        labels: actual_label + ["imported"],
         closed: original.state != "open"
       },
       comments: comments
@@ -151,7 +164,7 @@ class Hendl
       puts "closing old issue #{original.number}"
       body = []
       body << "This issue was migrated to #{new_issue_url}. Please post all further comments there."
-      body << reason
+      body << reason unless reason.nil?
       puts new_issue_url
       client.add_comment(source, original.number, body.join("\n\n"))
       smart_sleep
@@ -168,7 +181,7 @@ class Hendl
   def request_headers
     {
       "Accept" => "application/vnd.github.golden-comet-preview+json",
-      "Authorization" => ("token " + ENV["GITHUB_API_TOKEN"]),
+      "Authorization" => ("token " + ENV["DESTINATION_GITHUB_API_TOKEN"]),
       "Content-Type" => "application/x-www-form-urlencoded",
       "User-Agent" => "fastlane bot"
     }
@@ -191,18 +204,22 @@ class Hendl
     smart_sleep
     client.close_pull_request(source, original.number)
   end
+
+  def map_login_id(source_login_id)
+    user_mapping.fetch(source_login_id, source_login_id)
+  end
 end
 
-require './tools'
-destination = "fastlane/fastlane" # TODO: Should be fastlane
-names = Array(ENV["TOOL"] || @tools.delete_if { |a| a == "fastlane" }) # we don't want to import issues from our own repo
-open_only = !ENV["ALL"]
+# foo/bar, baz/qux, 'blah blah blah'
+source, destination, reason = *ARGV
 
-puts "Migrating #{names.join(', ')}"
+open_only = !!ENV["OPEN_ONLY"].to_i
 
-names.each do |current|
-  Hendl.new(source: "fastlane/#{current}",
-       destination: destination,
-            reason: "`fastlane` is now a mono repo, you can read more about the change in our [blog post](https://krausefx.com/blog/our-goal-to-unify-fastlane-tools). All tools are now available in the [fastlane main repo](https://github.com/fastlane/fastlane) :rocket:",
-         open_only: open_only)
-end
+puts "Migrating #{source} -> #{destination}"
+
+Hendl.new(
+  source: source,
+  destination: destination,
+  reason: reason,
+  open_only: open_only,
+)
